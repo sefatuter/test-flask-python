@@ -6,18 +6,15 @@ on:
       - main
 
 jobs:
-  build-and-push:
+  build-and-push-docker:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
+      contents: read # Required to checkout the repository code
+      packages: write # Required to push images to GHCR
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -30,28 +27,25 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
           push: true
           tags: ghcr.io/sefatuter/test-flask-python:${{ github.sha }}
+          # Optional: Add OCI labels for better image metadata
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Send success Webhook
-        if: success()
+      - name: Send success Webhook Notification
         run: |
+          # Define variables for clarity and to ensure correct escaping
+          REPO_KEY_VALUE="sefatuter/test-flask-python"
+          IMAGE_KEY_VALUE="ghcr.io/sefatuter/test-flask-python:${{ github.sha }}"
           WEBHOOK_URL="${{ secrets.DEPAS_WEBHOOK_URL }}"
-          REPO_NAME="sefatuter/test-flask-python"
-          IMAGE_TAG="ghcr.io/sefatuter/test-flask-python:${{ github.sha }}"
-          STATUS="success"
 
-          # Construct the JSON payload
-          PAYLOAD='{
-              "repo": "'"${REPO_NAME}"'",
-              "image": "'"${IMAGE_TAG}"'",
-              "status": "'"${STATUS}"'"
-          }'
+          # Construct the JSON payload for the webhook
+          # GitHub Actions evaluates ${{ expressions }} before executing the script
+          JSON_PAYLOAD="{\"repo\": \"${REPO_KEY_VALUE}\", \"image\": \"${IMAGE_KEY_VALUE}\", \"status\": \"success\"}"
 
-          echo "Sending webhook to: $WEBHOOK_URL"
-          echo "Payload: $PAYLOAD"
-
-          curl -X POST "$WEBHOOK_URL" \
+          # Send the webhook notification
+          curl -X POST "${WEBHOOK_URL}" \
                -H "Content-Type: application/json" \
-               -d "$PAYLOAD"
+               -d "${JSON_PAYLOAD}"
