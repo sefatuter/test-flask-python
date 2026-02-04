@@ -1,4 +1,4 @@
-name: Build and Push Docker Image to GHCR
+name: Docker Build, Push to GHCR, and Webhook
 
 on:
   push:
@@ -6,11 +6,11 @@ on:
       - main
 
 jobs:
-  build-and-push-docker:
+  build-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Required to checkout the repository code
-      packages: write # Required to push images to GHCR
+      contents: read
+      packages: write # Required for pushing to GitHub Container Registry
 
     steps:
       - name: Checkout repository
@@ -26,26 +26,16 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: . # Build from the root Dockerfile
           push: true
           tags: ghcr.io/sefatuter/test-flask-python:${{ github.sha }}
-          # Optional: Add OCI labels for better image metadata
-          labels: |
-            org.opencontainers.image.source=${{ github.event.repository.html_url }}
-            org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Send success Webhook Notification
+      - name: Send Success Webhook
+        env:
+          DEPAS_WEBHOOK_URL: ${{ secrets.DEPAS_WEBHOOK_URL }}
+          IMAGE_FULL_TAG: ghcr.io/sefatuter/test-flask-python:${{ github.sha }}
         run: |
-          # Define variables for clarity and to ensure correct escaping
-          REPO_KEY_VALUE="sefatuter/test-flask-python"
-          IMAGE_KEY_VALUE="ghcr.io/sefatuter/test-flask-python:${{ github.sha }}"
-          WEBHOOK_URL="${{ secrets.DEPAS_WEBHOOK_URL }}"
-
-          # Construct the JSON payload for the webhook
-          # GitHub Actions evaluates ${{ expressions }} before executing the script
-          JSON_PAYLOAD="{\"repo\": \"${REPO_KEY_VALUE}\", \"image\": \"${IMAGE_KEY_VALUE}\", \"status\": \"success\"}"
-
-          # Send the webhook notification
-          curl -X POST "${WEBHOOK_URL}" \
+          WEBHOOK_PAYLOAD="{\"repo\": \"sefatuter/test-flask-python\", \"image\": \"${IMAGE_FULL_TAG}\", \"status\": \"success\"}"
+          curl -X POST "${DEPAS_WEBHOOK_URL}" \
                -H "Content-Type: application/json" \
-               -d "${JSON_PAYLOAD}"
+               -d "${WEBHOOK_PAYLOAD}"
